@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Kanit', sans-serif;
+  --primary: 211 86% 48%;
+  /* #1277E3 - Wongnai-like Blue */
+  --primary-foreground: 0 0% 100%;
+
+  --background: 210 20% 98%;
+  /* Slightly cool grey background #F3F5F7 */
+  --foreground: 215 28% 17%;
+  /* Dark Blue Grey #1F2937 */
+
+  --card: 0 0% 100%;
+  --card-foreground: 215 28% 17%;
+
+  --border: 214 32% 91%;
+  /* Light Blue Grey #DEE2E6 */
+  --input: 214 32% 91%;
+
+  --radius: 0.5rem;
+  /* 8px - Classic clean look */
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+@layer components {
+
+  /* Wongnai Style Button */
+  .btn-blue {
+    @apply bg-[#1277E3] hover:bg-[#0E62BC] text-white font-medium rounded-lg shadow-sm transition-colors duration-200 active:scale-95;
+  }
+
+  .nav-item-active {
+    @apply bg-[#EAF4FF] text-[#1277E3];
+  }
+}
