@@ -5,7 +5,7 @@ export function ProductCard({ product, onAddToCart }) {
     return (
         <button
             className="group flex flex-col justify-between p-4 h-[120px] bg-white rounded-lg border border-transparent shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-lg hover:border-[#1277E3]/30 hover:-translate-y-0.5 transition-all duration-200 text-left relative overflow-hidden"
-            onClick={() => onAddToCart(product)}
+            onClick={(e) => onAddToCart(product, e)}
         >
             {/* Category Strip */}
             <div className="absolute top-0 left-0 w-1 h-full bg-[#1277E3] opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, ArrowLeft, ShoppingBag } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, ArrowLeft, ShoppingBag, Plus } from 'lucide-react';
 import { useProducts } from '../../context/ProductContext';
 import { useTables } from '../../context/TableContext';
 import { useTransactions } from '../../context/TransactionContext';
@@ -24,6 +24,10 @@ export function POSLayout({ onBack }) {
     const [discount, setDiscount] = useState(0);
     const [paymentMethod, setPaymentMethod] = useState('เงินสด');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [flyingItems, setFlyingItems] = useState([]);
+    const [cartPulse, setCartPulse] = useState(false);
+    const cartRef = useRef(null);
+    const mobileCartBtnRef = useRef(null);
 
     useEffect(() => {
         if (activeTableId) {
@@ -39,7 +43,36 @@ export function POSLayout({ onBack }) {
         return matchesCategory && matchesSearch;
     });
 
-    const addToCart = (product) => {
+    const addToCart = (product, event) => {
+        // Fly animation logic
+        if (event) {
+            const startX = event.clientX;
+            const startY = event.clientY;
+
+            // Destination: if mobile, use mobile btn, else use cart sidebar
+            const dest = (window.innerWidth < 768) ? mobileCartBtnRef.current : cartRef.current;
+            if (dest) {
+                const rect = dest.getBoundingClientRect();
+                const destX = rect.left + rect.width / 2;
+                const destY = rect.top + rect.height / 2;
+
+                const id = Date.now();
+                setFlyingItems(prev => [...prev, {
+                    id,
+                    startX,
+                    startY,
+                    targetX: destX - startX,
+                    targetY: destY - startY
+                }]);
+
+                setTimeout(() => {
+                    setFlyingItems(prev => prev.filter(item => item.id !== id));
+                    setCartPulse(true);
+                    setTimeout(() => setCartPulse(false), 300);
+                }, 600);
+            }
+        }
+
         setCart(prev => {
             const existing = prev.find(item => item.id === product.id);
             if (existing) {
@@ -228,8 +261,9 @@ export function POSLayout({ onBack }) {
                         </div>
                         {/* Mobile Cart Toggle */}
                         <button
+                            ref={mobileCartBtnRef}
                             onClick={() => setShowMobileCart(true)}
-                            className="md:hidden relative p-2 bg-[#1277E3] text-white rounded-lg shadow-md"
+                            className={`md:hidden relative p-2 bg-[#1277E3] text-white rounded-lg shadow-md transition-all ${cartPulse ? 'animate-cart-pop scale-110' : ''}`}
                         >
                             <ShoppingBag size={24} />
                             {cart.length > 0 && (
@@ -303,11 +337,15 @@ export function POSLayout({ onBack }) {
             </div>
 
             {/* Cart Section - Sidebar on Desktop, Overlay on Mobile */}
-            <div className={`
-                fixed inset-0 z-[110] md:relative md:inset-auto md:z-20 md:w-[360px] md:h-full
-                transition-transform duration-300 transform
-                ${showMobileCart ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
-            `}>
+            <div
+                ref={cartRef}
+                className={`
+                    fixed inset-0 z-[110] md:relative md:inset-auto md:z-20 md:w-[360px] md:h-full
+                    transition-transform duration-300 transform
+                    ${showMobileCart ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
+                    ${cartPulse ? 'animate-cart-pop' : ''}
+                `}
+            >
                 <div className="h-full bg-white flex flex-col shadow-[-4px_0_24px_rgba(0,0,0,0.03)] relative">
                     {/* Header for Mobile Cart */}
                     <div className="md:hidden p-4 border-b flex justify-between items-center bg-[#F3F5F7]">
@@ -495,6 +533,21 @@ export function POSLayout({ onBack }) {
             <div id="printable-receipt">
                 <Receipt transaction={lastTransaction} />
             </div>
+            {/* Flying Animation Elements */}
+            {flyingItems.map(item => (
+                <div
+                    key={item.id}
+                    className="flying-item bg-[#1277E3] w-6 h-6 rounded-full flex items-center justify-center text-white shadow-lg"
+                    style={{
+                        left: `${item.startX}px`,
+                        top: `${item.startY}px`,
+                        '--target-x': `${item.targetX}px`,
+                        '--target-y': `${item.targetY}px`
+                    }}
+                >
+                    <Plus size={14} strokeWidth={3} />
+                </div>
+            ))}
         </div>
     );
 }

@@ -36,7 +36,7 @@ export function Cart({ cartItems, onRemoveFromCart, onCheckout, onSaveOrder, onU
                     </div>
                 ) : (
                     cartItems.map((item) => (
-                        <div key={item.id} className="bg-white border border-[#F0F2F5] p-3 rounded-xl group transition-all hover:shadow-sm">
+                        <div key={item.id} className="bg-white border border-[#F0F2F5] p-3 rounded-xl group transition-all hover:shadow-sm cart-item-enter">
                             <div className="flex justify-between items-start mb-2">
                                 <div className="flex items-start gap-3 flex-1 min-w-0">
                                     <div className="w-6 h-6 bg-[#1277E3] text-white rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
