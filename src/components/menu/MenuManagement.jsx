@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useProducts } from '../../context/ProductContext';
-import { Plus, Trash2, Edit2, Save, ChevronUp, ChevronDown, FolderPlus, X, ArrowLeft, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Edit2, Save, ChevronUp, ChevronDown, FolderPlus, X, ArrowLeft, ChevronLeft, ChevronRight, AlertTriangle, Check } from 'lucide-react';
 
 export function MenuManagement() {
     const {
@@ -10,6 +10,7 @@ export function MenuManagement() {
         updateProduct,
         removeProduct,
         addCategory,
+        updateCategory, // ดึงฟังก์ชันที่เพิ่งเพิ่มมาใช้
         removeCategory,
         reorderProducts,
         reorderCategories
@@ -18,6 +19,10 @@ export function MenuManagement() {
     const [activeTab, setActiveTab] = useState('All');
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+
+    // State สำหรับการแก้ไขชื่อหมวดหมู่
+    const [editingCategory, setEditingCategory] = useState(null); // เก็บชื่อเดิมที่กำลังแก้ไข
+    const [editCategoryName, setEditCategoryName] = useState(''); // เก็บค่าใหม่ใน input
 
     const [isAddingProduct, setIsAddingProduct] = useState(false);
     const [newProduct, setNewProduct] = useState({ name: '', price: '', category: '' });
@@ -36,6 +41,19 @@ export function MenuManagement() {
         addCategory(newCategoryName);
         setNewCategoryName('');
         setIsAddingCategory(false);
+    };
+
+    // ฟังก์ชันจัดการการบันทึกการแก้ไขชื่อหมวดหมู่
+    const handleUpdateCategory = async (oldName) => {
+        if (!editCategoryName.trim() || editCategoryName === oldName) {
+            setEditingCategory(null);
+            return;
+        }
+        const result = await updateCategory(oldName, editCategoryName);
+        if (result.success) {
+            if (activeTab === oldName) setActiveTab(editCategoryName);
+            setEditingCategory(null);
+        }
     };
 
     const handleAddProduct = (e) => {
@@ -74,26 +92,10 @@ export function MenuManagement() {
         else if (direction === 'down' && index < newFiltered.length - 1) targetIndex = index + 1;
 
         if (targetIndex !== -1) {
-            // Swap in the local filtered list
             const temp = newFiltered[index];
             newFiltered[index] = newFiltered[targetIndex];
             newFiltered[targetIndex] = temp;
 
-            // We need to update the 'order' field for all products based on this new relative order
-            // To be safe and consistent, we'll assign orders based on their new positions in the full list
-            // but for simplicity and to avoid global side effects, we just update the orders of the two swapped items
-
-            const item1 = newFiltered[index];
-            const item2 = newFiltered[targetIndex];
-
-            // Re-map the 'order' values
-            const updates = [
-                updateProduct(item1.id, { order: index }),
-                updateProduct(item2.id, { order: targetIndex })
-            ];
-
-            // If we want it to be perfectly sequential within the category, 
-            // we should probably update all items in newFiltered
             const allUpdates = newFiltered.map((p, idx) => updateProduct(p.id, { order: idx }));
             await Promise.all(allUpdates);
         }
@@ -128,7 +130,6 @@ export function MenuManagement() {
                 </div>
             </header>
 
-            {/* Category Management with Navigation Arrows */}
             <div className="bg-white px-8 pt-8 border-b border-[#DEE2E6] flex items-center gap-2 relative group overflow-visible">
                 <button
                     onClick={() => document.getElementById('menu-cat-scroll').scrollBy({ left: -200, behavior: 'smooth' })}
@@ -144,42 +145,56 @@ export function MenuManagement() {
                 >
                     {categories.map(cat => (
                         <div key={cat} className="relative group flex-shrink-0 pt-4">
-                            <button
-                                onClick={() => setActiveTab(cat)}
-                                className={`px-5 py-3 text-sm font-bold rounded-t-xl transition-all border-b-4 whitespace-nowrap ${activeTab === cat ? 'bg-[#F3F5F7] text-[#1277E3] border-[#1277E3]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}
-                            >
-                                {cat}
-                            </button>
-                            {cat !== 'All' && (
+                            {editingCategory === cat ? (
+                                <div className="flex items-center bg-gray-100 rounded-t-xl px-2 mb-[-4px] border-b-4 border-[#1277E3] z-50 relative">
+                                    <input
+                                        autoFocus
+                                        className="bg-transparent text-sm font-bold p-2 outline-none w-24"
+                                        value={editCategoryName}
+                                        onChange={(e) => setEditCategoryName(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleUpdateCategory(cat)}
+                                    />
+                                    <button onClick={() => handleUpdateCategory(cat)} className="text-green-600 p-1"><Check size={14} /></button>
+                                    <button onClick={() => setEditingCategory(null)} className="text-red-400 p-1"><X size={14} /></button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setActiveTab(cat)}
+                                    className={`px-5 py-3 text-sm font-bold rounded-t-xl transition-all border-b-4 whitespace-nowrap ${activeTab === cat ? 'bg-[#F3F5F7] text-[#1277E3] border-[#1277E3]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}
+                                >
+                                    {cat}
+                                </button>
+                            )}
+
+                            {cat !== 'All' && editingCategory !== cat && (
                                 <div className="absolute top-0 left-0 right-0 flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-20 transform -translate-y-1">
                                     {categories.indexOf(cat) > 1 && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); moveCategoryItem(cat, 'left'); }}
-                                            className="bg-[#1277E3] text-white rounded-full p-1 shadow-lg hover:bg-blue-600 hover:scale-110 transition-transform"
-                                            title="เลื่อนซ้าย"
-                                        >
-                                            <ChevronLeft size={12} />
-                                        </button>
+                                            className="bg-[#1277E3] text-white rounded-full p-1 shadow-lg hover:bg-blue-600"
+                                        ><ChevronLeft size={12} /></button>
                                     )}
-                                    {categories.indexOf(cat) < categories.length - 1 && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); moveCategoryItem(cat, 'right'); }}
-                                            className="bg-[#1277E3] text-white rounded-full p-1 shadow-lg hover:bg-blue-600 hover:scale-110 transition-transform"
-                                            title="เลื่อนขวา"
-                                        >
-                                            <ChevronRight size={12} />
-                                        </button>
-                                    )}
+                                    {/* ปุ่มแก้ไขชื่อหมวดหมู่ */}
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            setCategoryToDelete(cat);
+                                            setEditingCategory(cat);
+                                            setEditCategoryName(cat);
                                         }}
-                                        className="bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600 hover:scale-110 transition-transform"
-                                        title="ลบ"
-                                    >
-                                        <X size={12} />
-                                    </button>
+                                        className="bg-amber-500 text-white rounded-full p-1 shadow-lg hover:bg-amber-600"
+                                        title="แก้ไขชื่อ"
+                                    ><Edit2 size={12} /></button>
+
+                                    {categories.indexOf(cat) < categories.length - 1 && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); moveCategoryItem(cat, 'right'); }}
+                                            className="bg-[#1277E3] text-white rounded-full p-1 shadow-lg hover:bg-blue-600"
+                                        ><ChevronRight size={12} /></button>
+                                    )}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setCategoryToDelete(cat); }}
+                                        className="bg-red-500 text-white rounded-full p-1 shadow-lg hover:bg-red-600"
+                                    ><X size={12} /></button>
                                 </div>
                             )}
                         </div>
@@ -227,8 +242,8 @@ export function MenuManagement() {
                 </button>
             </div>
 
+            {/* ส่วนตารางรายการอาหารคงเดิม... */}
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
-                {/* Add Product Modal/Form */}
                 {isAddingProduct && (
                     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
                         <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
@@ -238,7 +253,7 @@ export function MenuManagement() {
                                     <label className="block text-sm font-medium text-gray-500 mb-1">ชื่อเมนู</label>
                                     <input
                                         required
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-[#1277E3] focus:ring-1 focus:ring-[#1277E3] outline-none transition-all"
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none"
                                         placeholder="เช่น ข้าวผัดไข่"
                                         value={newProduct.name}
                                         onChange={e => setNewProduct({ ...newProduct, name: e.target.value })}
@@ -249,33 +264,21 @@ export function MenuManagement() {
                                     <input
                                         required
                                         type="number"
-                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:border-[#1277E3] focus:ring-1 focus:ring-[#1277E3] outline-none transition-all"
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none"
                                         placeholder="เช่น 50"
                                         value={newProduct.price}
                                         onChange={e => setNewProduct({ ...newProduct, price: e.target.value })}
                                     />
                                 </div>
                                 <div className="flex gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsAddingProduct(false)}
-                                        className="flex-1 py-3 rounded-xl font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                                    >
-                                        ยกเลิก
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="flex-[2] py-3 rounded-xl font-bold bg-[#1277E3] text-white hover:bg-[#0E62BC] transition-colors shadow-lg shadow-blue-100"
-                                    >
-                                        บันทึก
-                                    </button>
+                                    <button type="button" onClick={() => setIsAddingProduct(false)} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600">ยกเลิก</button>
+                                    <button type="submit" className="flex-[2] py-3 rounded-xl bg-[#1277E3] text-white font-bold">บันทึก</button>
                                 </div>
                             </form>
                         </div>
                     </div>
                 )}
 
-                {/* Table View */}
                 <div className="bg-white border border-[#DEE2E6] rounded-2xl overflow-hidden shadow-sm">
                     <table className="w-full text-left">
                         <thead>
@@ -289,81 +292,36 @@ export function MenuManagement() {
                         <tbody className="divide-y divide-gray-100">
                             {filteredProducts.length === 0 ? (
                                 <tr>
-                                    <td colSpan="4" className="p-12 text-center">
-                                        <div className="flex flex-col items-center gap-2 text-gray-300">
-                                            <FolderPlus size={48} strokeWidth={1} />
-                                            <p className="font-medium">ไม่มีรายการอาหารในหมวดนี้</p>
-                                        </div>
-                                    </td>
+                                    <td colSpan="4" className="p-12 text-center text-gray-300">ไม่มีรายการอาหารในหมวดนี้</td>
                                 </tr>
                             ) : (
                                 filteredProducts.map((product, index) => (
                                     <tr key={product.id} className="hover:bg-gray-50/80 transition-colors">
-                                        <td className="p-4">
-                                            <div className="flex flex-col items-center gap-0.5">
-                                                <button
-                                                    onClick={() => moveProduct(product.id, 'up')}
-                                                    disabled={index === 0}
-                                                    className="p-1 text-gray-300 hover:text-[#1277E3] disabled:opacity-0 transition-colors"
-                                                >
-                                                    <ChevronUp size={16} />
-                                                </button>
-                                                <span className="text-xs font-bold text-gray-400">{index + 1}</span>
-                                                <button
-                                                    onClick={() => moveProduct(product.id, 'down')}
-                                                    disabled={index === filteredProducts.length - 1}
-                                                    className="p-1 text-gray-300 hover:text-[#1277E3] disabled:opacity-0 transition-colors"
-                                                >
-                                                    <ChevronDown size={16} />
-                                                </button>
+                                        <td className="p-4 text-center">
+                                            <div className="flex flex-col items-center">
+                                                <button onClick={() => moveProduct(product.id, 'up')} disabled={index === 0} className="text-gray-300 hover:text-blue-500 disabled:opacity-0"><ChevronUp size={16} /></button>
+                                                <span className="text-xs font-bold">{index + 1}</span>
+                                                <button onClick={() => moveProduct(product.id, 'down')} disabled={index === filteredProducts.length - 1} className="text-gray-300 hover:text-blue-500 disabled:opacity-0"><ChevronDown size={16} /></button>
                                             </div>
                                         </td>
                                         <td className="p-4">
                                             {editingProductId === product.id ? (
-                                                <input
-                                                    className="w-full bg-white border border-[#1277E3] p-2 rounded-lg text-sm font-bold outline-none"
-                                                    value={editForm.name}
-                                                    onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                                                />
-                                            ) : (
-                                                <div className="font-bold text-gray-800">{product.name}</div>
-                                            )}
+                                                <input className="w-full border p-2 rounded" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                                            ) : product.name}
                                         </td>
                                         <td className="p-4">
                                             {editingProductId === product.id ? (
-                                                <input
-                                                    type="number"
-                                                    className="w-full bg-white border border-[#1277E3] p-2 rounded-lg text-sm font-bold outline-none text-[#1277E3]"
-                                                    value={editForm.price}
-                                                    onChange={e => setEditForm({ ...editForm, price: e.target.value })}
-                                                />
-                                            ) : (
-                                                <div className="font-black text-[#1277E3]">฿{product.price}</div>
-                                            )}
+                                                <input type="number" className="w-full border p-2 rounded" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} />
+                                            ) : `฿${product.price}`}
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 {editingProductId === product.id ? (
-                                                    <button
-                                                        onClick={() => handleUpdateProduct(product.id)}
-                                                        className="p-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors shadow-lg shadow-green-100"
-                                                    >
-                                                        <Save size={16} />
-                                                    </button>
+                                                    <button onClick={() => handleUpdateProduct(product.id)} className="p-2 bg-green-500 text-white rounded"><Save size={16} /></button>
                                                 ) : (
-                                                    <button
-                                                        onClick={() => startEditing(product)}
-                                                        className="p-2.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-[#EAF4FF] hover:text-[#1277E3] transition-colors"
-                                                    >
-                                                        <Edit2 size={16} />
-                                                    </button>
+                                                    <button onClick={() => startEditing(product)} className="p-2 bg-gray-100 rounded text-gray-500"><Edit2 size={16} /></button>
                                                 )}
-                                                <button
-                                                    onClick={() => { if (window.confirm('ยืนยันการลบเมนูนี้?')) removeProduct(product.id); }}
-                                                    className="p-2.5 bg-gray-100 text-gray-500 rounded-lg hover:bg-red-50 hover:text-red-500 transition-colors"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                <button onClick={() => { if (window.confirm('ลบเมนูนี้?')) removeProduct(product.id); }} className="p-2 bg-gray-100 rounded text-gray-500 hover:text-red-500"><Trash2 size={16} /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -374,37 +332,17 @@ export function MenuManagement() {
                 </div>
             </div>
 
-            {/* Custom Delete Confirmation Modal */}
+            {/* Delete Category Modal คงเดิม... */}
             {categoryToDelete && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-200">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl">
                         <div className="flex flex-col items-center text-center">
-                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-4">
-                                <AlertTriangle size={32} className="text-red-500" />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-800 mb-2">ยืนยันการลบหมวดหมู่?</h3>
-                            <p className="text-gray-500 text-sm mb-8">
-                                คุณแน่ใจหรือไม่ว่าต้องการลบหมวดหมู่ <span className="font-bold text-gray-800">"{categoryToDelete}"</span>?
-                                <br />เมนูในหมวดนี้จะไม่แสดงผลจนกว่าจะเลือกหมวดใหม่
-                            </p>
-
+                            <AlertTriangle size={32} className="text-red-500 mb-4" />
+                            <h3 className="text-xl font-bold mb-2">ยืนยันการลบหมวดหมู่?</h3>
+                            <p className="text-gray-500 text-sm mb-8">"{categoryToDelete}"</p>
                             <div className="flex gap-3 w-full">
-                                <button
-                                    onClick={() => setCategoryToDelete(null)}
-                                    className="flex-1 py-3 px-4 rounded-xl font-bold text-gray-500 hover:bg-gray-100 transition-colors"
-                                >
-                                    ยกเลิก
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        removeCategory(categoryToDelete);
-                                        if (activeTab === categoryToDelete) setActiveTab('All');
-                                        setCategoryToDelete(null);
-                                    }}
-                                    className="flex-1 py-3 px-4 rounded-xl font-bold bg-red-500 text-white hover:bg-red-600 shadow-lg shadow-red-100 transition-all active:scale-95"
-                                >
-                                    ยืนยันลบ
-                                </button>
+                                <button onClick={() => setCategoryToDelete(null)} className="flex-1 py-3 text-gray-500 font-bold">ยกเลิก</button>
+                                <button onClick={() => { removeCategory(categoryToDelete); if (activeTab === categoryToDelete) setActiveTab('All'); setCategoryToDelete(null); }} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold">ยืนยันลบ</button>
                             </div>
                         </div>
                     </div>

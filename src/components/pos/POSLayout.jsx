@@ -22,18 +22,22 @@ export function POSLayout({ onBack }) {
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [lastTransaction, setLastTransaction] = useState(null);
     const [discount, setDiscount] = useState(0);
-    const [paymentMethod, setPaymentMethod] = useState('เงินสด');
+    const [paymentMethod, setPaymentMethod] = useState('เงินโอน');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [flyingItems, setFlyingItems] = useState([]);
     const [cartPulse, setCartPulse] = useState(false);
     const cartRef = useRef(null);
     const mobileCartBtnRef = useRef(null);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
     useEffect(() => {
         if (activeTableId) {
             const table = tables.find(t => t.id === activeTableId);
             if (table && table.orders.length > 0) setCart(table.orders);
             else setCart([]);
+
+            // เพิ่มบรรทัดนี้ลงไป เพื่อ Re-confirm ว่าต้องเป็นเงินโอนทุกครั้งที่สลับโต๊ะ
+            setPaymentMethod('เงินโอน');
         }
     }, [activeTableId, tables]);
 
@@ -160,12 +164,13 @@ export function POSLayout({ onBack }) {
         setShowConfirmModal(true);
     };
 
-    const confirmCheckout = async () => {
+    // 1. เพิ่ม parameter 'days' (ให้ default เป็น 0)
+    const confirmCheckout = async (days = 0) => {
         if (isSubmitting) return;
         setIsSubmitting(true);
 
         const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-        const tax = 0; // Removed VAT
+        const tax = 0;
         const total = Math.max(0, subtotal - discount);
 
         // Determine channel
@@ -177,7 +182,7 @@ export function POSLayout({ onBack }) {
         const channelDisplayName = table ? `โต๊ะ ${table.name}` : orderChannel;
 
         try {
-            // Save transaction and wait for DB response
+            // --- ส่วนที่ปรับปรุง: ส่งค่า days ที่คำนวณได้จากหน้า UI เข้าไป ---
             const transaction = await addTransaction({
                 tableId: activeTableId,
                 orderChannel: channelDisplayName,
@@ -186,17 +191,22 @@ export function POSLayout({ onBack }) {
                 tax,
                 discount,
                 total,
-                paymentMethod
-            });
+                paymentMethod: paymentMethod
+            }, days);
 
             if (transaction) {
                 setLastTransaction(transaction);
                 setShowConfirmModal(false);
+
+                // รีเซ็ตวันที่กลับมาเป็น "วันนี้" สำหรับบิลถัดไป
+                if (typeof setSelectedDate === 'function') {
+                    setSelectedDate(new Date().toISOString().split('T')[0]);
+                }
+
                 setShowSuccessModal(true);
 
                 // Clear table and cart
-                const isTable = typeof activeTableId === 'number';
-                if (isTable) {
+                if (typeof activeTableId === 'number') {
                     clearTable(activeTableId);
                 }
                 setCart([]);
@@ -204,6 +214,7 @@ export function POSLayout({ onBack }) {
             }
         } catch (error) {
             console.error("Checkout error:", error);
+            alert("เกิดข้อผิดพลาด: " + error.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -407,6 +418,7 @@ export function POSLayout({ onBack }) {
                     <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
                         <h3 className="text-xl font-bold text-gray-800 mb-4">ยืนยันการชำระเงิน</h3>
 
+                        {/* ส่วนเลือกวิธีชำระเงิน */}
                         <div className="mb-6">
                             <label className="block text-sm font-medium text-gray-500 mb-2">ช่องทางการชำระเงิน</label>
                             <div className="grid grid-cols-2 gap-2">
@@ -425,17 +437,45 @@ export function POSLayout({ onBack }) {
                             </div>
                         </div>
 
-                        <p className="text-gray-500 mb-6 font-medium">ยอดชำระเงินทั้งหมด <span className="text-[#1277E3] text-lg font-bold">฿{Math.max(0, cart.reduce((s, i) => s + i.price * i.quantity, 0) - discount).toLocaleString()}</span></p>
+                        {/* ส่วนเลือกวันที่ (แก้ไขใหม่) */}
+                        <div className="mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                            <label className="block text-sm font-medium text-gray-500 mb-2">วันที่บันทึกบิล</label>
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-[#1277E3] outline-none text-gray-700 font-bold"
+                            />
+                        </div>
+
+                        <p className="text-gray-500 mb-6 font-medium">
+                            ยอดชำระเงินทั้งหมด <span className="text-[#1277E3] text-lg font-bold">฿{Math.max(0, cart.reduce((s, i) => s + i.price * i.quantity, 0) - discount).toLocaleString()}</span>
+                        </p>
 
                         <div className="flex gap-3">
                             <button
-                                onClick={() => setShowConfirmModal(false)}
+                                onClick={() => {
+                                    setShowConfirmModal(false);
+                                    setSelectedDate(new Date().toISOString().split('T')[0]); // รีเซ็ตวันที่
+                                }}
                                 className="flex-1 py-3 rounded-xl font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                             >
                                 ยกเลิก
                             </button>
                             <button
-                                onClick={confirmCheckout}
+                                onClick={() => {
+                                    // คำนวณหาส่วนต่างวัน (diff days)
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const pickedDate = new Date(selectedDate);
+                                    pickedDate.setHours(0, 0, 0, 0);
+
+                                    const diffTime = today - pickedDate;
+                                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+                                    // ส่งจำนวนวันที่ต้องย้อนหลังไปที่ confirmCheckout (ถ้าเลือกวันนี้จะเป็น 0)
+                                    confirmCheckout(diffDays > 0 ? diffDays : 0);
+                                }}
                                 disabled={isSubmitting}
                                 className={`flex-[2] py-3 rounded-xl font-bold text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 ${isSubmitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#1277E3] hover:bg-[#0E62BC] shadow-blue-200'}`}
                             >

@@ -74,7 +74,7 @@ export function ProductProvider({ children }) {
                 order: products.length
             }]);
         if (error) alert('Error adding product: ' + error.message);
-        else await fetchProducts(); // Manual fetch for immediate update
+        else await fetchProducts();
     };
 
     const updateProduct = async (id, updatedData) => {
@@ -100,8 +100,39 @@ export function ProductProvider({ children }) {
             .from('categories')
             .insert([{ name }]);
         if (error) alert('Error adding category: ' + error.message);
-        else await fetchCategories(); // Manual fetch for immediate update
+        else await fetchCategories();
     };
+
+    // --- ส่วนที่เพิ่มใหม่: ฟังก์ชันแก้ไขชื่อ Category ---
+    const updateCategory = async (oldName, newName) => {
+        try {
+            // 1. อัปเดตชื่อในตาราง categories
+            const { error: catError } = await supabase
+                .from('categories')
+                .update({ name: newName })
+                .eq('name', oldName);
+
+            if (catError) throw catError;
+
+            // 2. อัปเดตชื่อหมวดหมู่ในตาราง products ทุกตัวที่ใช้ชื่อเดิม
+            // จุดนี้สำคัญมาก เพื่อให้สินค้าไม่หายไปจากหมวดหมู่ครับ
+            const { error: prodError } = await supabase
+                .from('products')
+                .update({ category: newName })
+                .eq('category', oldName);
+
+            if (prodError) throw prodError;
+
+            // 3. ดึงข้อมูลใหม่มาแสดงผล
+            await fetchCategories();
+            await fetchProducts();
+
+            return { success: true };
+        } catch (error) {
+            alert('Error updating category: ' + error.message);
+            return { success: false };
+        }
+    }
 
     const removeCategory = async (name) => {
         const { error } = await supabase
@@ -113,13 +144,8 @@ export function ProductProvider({ children }) {
     };
 
     const reorderCategories = async (newCategoryNames) => {
-        // Update local state immediately for instant feedback
         setCategories(newCategoryNames);
-
-        // Skip 'All' as it's not in the DB
         const dbCategories = newCategoryNames.filter(name => name !== 'All');
-
-        // Update each category's order in the DB
         const updates = dbCategories.map((name, index) =>
             supabase.from('categories').update({ order: index }).eq('name', name)
         );
@@ -127,10 +153,8 @@ export function ProductProvider({ children }) {
         try {
             await Promise.all(updates);
         } catch (err) {
-            console.error('Reorder error (check if "order" column exists in categories table):', err);
+            console.error('Reorder error:', err);
         }
-        // No need to fetch immediately as we already updated state locally 
-        // and subscriptions will handle synced updates eventually
     };
 
     const reorderProducts = async (newProducts) => {
@@ -150,6 +174,7 @@ export function ProductProvider({ children }) {
             updateProduct,
             removeProduct,
             addCategory,
+            updateCategory, // ส่งฟังก์ชันออกไปใช้งาน
             removeCategory,
             reorderProducts,
             reorderCategories

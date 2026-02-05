@@ -13,8 +13,6 @@ export function TransactionProvider({ children }) {
 
     useEffect(() => {
         fetchTransactions();
-
-        // Subscribe to new transactions
         const subscription = supabase
             .channel('transactions-changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, fetchTransactions)
@@ -33,11 +31,16 @@ export function TransactionProvider({ children }) {
 
         if (error) console.error('Error fetching transactions:', error);
         else setTransactions(data || []);
-
         setLoading(false);
     };
 
-    const addTransaction = async (transactionData) => {
+    // แก้ไขฟังก์ชัน addTransaction ใน TransactionContext.js
+    const addTransaction = async (transactionData, days = 0) => { // 1. เพิ่ม parameter 'days'
+        // 2. คำนวณวันที่ตามที่เลือกย้อนหลัง
+        const transactionDate = new Date();
+        transactionDate.setDate(transactionDate.getDate() - days);
+
+        const tempId = `temp-${Date.now()}`;
         const newTransaction = {
             table_id: String(transactionData.tableId) || null,
             order_channel: transactionData.orderChannel || 'อื่นๆ',
@@ -46,74 +49,64 @@ export function TransactionProvider({ children }) {
             tax: transactionData.tax || 0,
             discount: transactionData.discount || 0,
             total: transactionData.total,
-            payment_method: transactionData.paymentMethod || 'เงินสด',
-            timestamp: new Date().toISOString()
+            payment_method: transactionData.paymentMethod || 'เงินโอน',
+            timestamp: transactionDate.toISOString() // 3. ใช้วันที่ที่คำนวณแล้ว
         };
 
-        // Optimistic Update
-        const tempId = `temp-${Date.now()}`;
-        const optimisticTransaction = { ...newTransaction, id: tempId };
-        setTransactions(prev => [optimisticTransaction, ...prev]);
+        // Optimistic Update (แสดงผลหน้าจอก่อน)
+        setTransactions(prev => [{ ...newTransaction, id: tempId }, ...prev]);
 
-        const { data, error } = await supabase
-            .from('transactions')
-            .insert([{
-                table_id: newTransaction.table_id,
-                order_channel: newTransaction.order_channel,
-                items: newTransaction.items,
-                subtotal: newTransaction.subtotal,
-                tax: newTransaction.tax,
-                discount: newTransaction.discount,
-                total: newTransaction.total,
-                payment_method: newTransaction.payment_method
-            }])
-            .select()
-            .single();
+        try {
+            const { data, error } = await supabase
+                .from('transactions')
+                .insert([{
+                    table_id: newTransaction.table_id,
+                    order_channel: newTransaction.order_channel,
+                    items: newTransaction.items,
+                    subtotal: newTransaction.subtotal,
+                    tax: newTransaction.tax,
+                    discount: newTransaction.discount,
+                    total: newTransaction.total,
+                    payment_method: newTransaction.payment_method,
+                    // 4. บังคับส่งค่า timestamp ลง Database
+                    timestamp: newTransaction.timestamp
+                }])
+                .select()
+                .single();
 
-        if (error) {
-            alert('Error adding transaction: ' + error.message);
-            // Revert optimistic update
+            if (error) throw error;
+
+            setTransactions(prev => prev.map(t => t.id === tempId ? data : t));
+            return data;
+
+        } catch (error) {
+            console.error('Error adding transaction:', error);
+            alert('บันทึกไม่สำเร็จ: ' + error.message);
             setTransactions(prev => prev.filter(t => t.id !== tempId));
             return null;
         }
-
-        // Replace optimistic entry with real DB data
-        setTransactions(prev => prev.map(t => t.id === tempId ? data : t));
-        return data;
     };
 
     const deleteTransaction = async (id) => {
-        if (window.confirm('คุณต้องการลบบิลนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้')) {
-            // Optimistic Update
+        if (window.confirm('คุณต้องการลบบิลนี้ใช่หรือไม่?')) {
             const deletedTransaction = transactions.find(t => t.id === id);
             setTransactions(prev => prev.filter(t => t.id !== id));
 
-            const { error } = await supabase
-                .from('transactions')
-                .delete()
-                .eq('id', id);
-
+            const { error } = await supabase.from('transactions').delete().eq('id', id);
             if (error) {
-                alert('Error deleting transaction: ' + error.message);
-                // Revert
+                alert('Error: ' + error.message);
                 if (deletedTransaction) setTransactions(prev => [deletedTransaction, ...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
             }
         }
     };
 
     const updateTransaction = async (id, updatedData) => {
-        // Optimistic Update
-        const originalTransactions = [...transactions];
+        const original = [...transactions];
         setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
-
-        const { error } = await supabase
-            .from('transactions')
-            .update(updatedData)
-            .eq('id', id);
-
+        const { error } = await supabase.from('transactions').update(updatedData).eq('id', id);
         if (error) {
-            alert('Error updating transaction: ' + error.message);
-            setTransactions(originalTransactions);
+            alert('Error: ' + error.message);
+            setTransactions(original);
         }
     };
 
